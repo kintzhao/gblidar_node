@@ -8,8 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-// #define DATACOUNT 24 //0.5
-#define DATACOUNT 36 //0.33
+//#define DATACOUNT 24 //0.5
+ #define DATACOUNT 36 //0.33
 
 struct RadarData
 {
@@ -19,7 +19,7 @@ struct RadarData
    void ClearData()
    {
 		speed = 0;
-        memset(data, '\0', 1080);
+        memset(data, '\0', 30*DATACOUNT);
    }
 };
 
@@ -38,6 +38,7 @@ public:
 private:
 	void CheckLineBeComplete(uint8_t* data, int size, bool* bComplete, bool* bStartLine);
 	void AddOneLineData(uint8_t* data, int size);
+    void processOneBlock(uint8_t* data, int size);
 	void Hex2Str( const char *sSrc,  char *sDest, int nSrcLen );
     void updateLidarDatas();
 
@@ -61,6 +62,7 @@ public:
     void Update(const RadarData&  data);
     void init(){}
     void work();
+    void work2();
 };
 
 

@@ -69,15 +69,16 @@ void GBlidarRead::ReadData()
     {
         //获取缓冲区内的字节数
         //size_t n = sp.available();
-        //std::cout << "GBlidarRead::ReadData 2.." << std::endl;
+
         int n = sp.available();
+        std::cout << "GBlidarRead::ReadData 2..|| "<< n << std::endl;
         if(n!=0)
         {
             uint8_t buffer[1024 * 1024];
             //读出数据
             //std::cout << "GBlidarRead::ReadData 3.." << std::endl;
             n = sp.read(buffer, n);
-            //std::cout << "GBlidarRead::ReadData buffer length:" << n<< std::endl;
+            std::cout << "GBlidarRead::ReadData buffer length:" << n<< std::endl;
             for(int i = 0; i < n; i++)
             {
                 if(buffer[i] == 0xFA)
@@ -237,7 +238,7 @@ void GBlidarRead::Hex2Str( const char *sSrc,  char *sDest, int nSrcLen )
 void GBlidarRead::Update(const RadarData& data)
 {
     static int i =0;
-    //std::cout << "data update, " << i++<<" || "<< data.speed << std::endl;
+    std::cout << "data update: " << i++<< std::endl;
     sensor_msgs::LaserScan scan_msg;
 
     scan_msg.header.stamp = ros::Time::now();
@@ -246,9 +247,9 @@ void GBlidarRead::Update(const RadarData& data)
     scan_msg.angle_min =  -M_PI;
     scan_msg.angle_max =  M_PI;
 
-    scan_msg.angle_increment = 0.333*M_PI/180;
+    scan_msg.angle_increment = 12.0/DATACOUNT*M_PI/180;
 
-    scan_msg.scan_time = 1.0/(216000/30/36);
+    scan_msg.scan_time = 1.0/(216000/30/DATACOUNT);
     scan_msg.time_increment = 1.0/(216000);
     scan_msg.range_min = 0.15;
     scan_msg.range_max = 15;//8.0;
@@ -256,13 +257,13 @@ void GBlidarRead::Update(const RadarData& data)
     scan_msg.intensities.resize(30* DATACOUNT);
     scan_msg.ranges.resize(30* DATACOUNT);
 
-    float degree = 0;
+    //float degree = 0;
     for(int i = 0;i<30;i++){
         //std::cout << "-degree:" << degree << ",distance(m):"<< data.data[i][0]*0.001 << std::endl;
         for(int j=0 ;j< DATACOUNT;j++){
             scan_msg.ranges[i*30+j] = data.data[i][j]*0.001;//m
             scan_msg.intensities[i*30+j] = 0.0;
-            degree = degree + 0.333;
+            //degree = degree + 0.333;
         }
     }
 
@@ -274,7 +275,7 @@ void GBlidarRead::work()
 {
     std::cout << "GBlidarRead::ReadData start.." << std::endl;
     //创建句柄（虽然后面没用到这个句柄，但如果不创建，运行时进程会出错）
-    ros::Rate loop_rate(10);//睡眠10毫秒
+    //ros::Rate loop_rate(20);//睡眠10毫秒
     bool bLastFA = false;
     uint8_t tempData[200];
     int tempPos = 0;
@@ -289,7 +290,7 @@ void GBlidarRead::work()
             //读出数据
             //std::cout << "GBlidarRead::ReadData 3.." << std::endl;
             n = sp.read(buffer, n);
-            //std::cout << "GBlidarRead::ReadData buffer length:" << n<< std::endl;
+            std::cout << "GBlidarRead::ReadData buffer length:" << n<< std::endl;
             for(int i = 0; i < n; i++)
             {
                 if(buffer[i] == 0xFA)
@@ -308,8 +309,143 @@ void GBlidarRead::work()
                 }
             }
         }
+        //loop_rate.sleep();
         ros::spinOnce();
-        loop_rate.sleep();
+
     }
     std::cout << "GBlidarRead::ReadData end.." << std::endl;
 }
+
+
+void GBlidarRead::work2()
+{
+    std::cout << "GBlidarRead::ReadData start.." << std::endl;
+    ros::Rate loop_rate(20);//睡眠10毫秒
+    bool bLastFA = false;
+    uint8_t tempData[200];
+    int oneBlockCount = -1;
+    bool isCheckNewBlock = false;
+    while(ros::ok())
+    {
+        //获取缓冲区内的字节数
+        //std::cout << "GBlidarRead::ReadData 2..|| "<<sp.available() << std::endl;
+        int n = sp.available();
+        std::cout << "GBlidarRead::ReadData 2..|| "<< n << std::endl;
+        if(n!=0)
+        {
+            uint8_t buffer[1024 * 1024];
+            //读出数据
+            //std::cout << "GBlidarRead::ReadData 3.." << std::endl;
+            n = sp.read(buffer, n);
+            std::cout << "GBlidarRead::ReadData buffer length:" << n<< std::endl;
+            bool isUpdateOneBlock = false;
+            //bool isCheckNewBlock = true;
+            for(int i = 0; i < n; i++)
+            {
+                if(buffer[i] == 0xFA)
+                {
+                    isCheckNewBlock = true;
+                    memset(tempData, 0, DATACOUNT * 2 + 6);
+                    oneBlockCount = 0;
+                    tempData[oneBlockCount++] = buffer[i];
+                }
+                else
+                {
+                    if(isCheckNewBlock)
+                        tempData[oneBlockCount++] = buffer[i];
+                }
+
+                if(isCheckNewBlock && oneBlockCount == DATACOUNT * 2 + 6 )
+                {
+                    std::cout<<"oneBlockCount calc: "<<oneBlockCount<<std::endl;
+                    isCheckNewBlock = false;
+                    processOneBlock(tempData, oneBlockCount);
+                    oneBlockCount = -1;
+                    memset(tempData, 0, DATACOUNT * 2 + 6);
+                }
+            }
+        }
+        loop_rate.sleep();
+        ros::spinOnce();
+
+    }
+    std::cout << "GBlidarRead::ReadData end.." << std::endl;
+}
+
+void GBlidarRead::processOneBlock(uint8_t* data, int size)
+{
+    //static RadarData radarData;
+    /*//打印输出
+    //std::cout <<"------------------------------"<< std::endl;
+
+    for(int i = 0; i < size; i++)
+    {
+        char str[3] = {'\0'};
+        char buf = (char)(data[i]);
+        //memcpy(&buf, &(data[i]), 1);
+        Hex2Str(&buf,str,1);
+        //std::cout << str << " ";
+    }
+    //std::cout << std::endl;
+*/
+    static int lastBlockIndex = -1;
+    int checkSum = 0;
+    bool isUpdateOneBlock = false;
+    bool isNewScan = false;
+    if(size == (DATACOUNT * 2 + 6) && data[0] == 0xFA)
+    {
+        for(int i = 0;i<size -2;i++){//最后2位是校验位
+            checkSum += (int)(data[i]);
+        }
+        int checkSum = (int)(data[size -1]<<8) + (int)(data[size -2]);
+        if((int)checkSum == checkSum)
+        {
+            isUpdateOneBlock = true;
+        }
+        else
+        {
+            isUpdateOneBlock = false;
+        }
+        std::cout<<"count OK! isUpdateOneBlock checkSum: "<<isUpdateOneBlock<<std::endl;
+    }
+    else
+    {
+        isUpdateOneBlock = false;
+    }
+    std::cout<<"run UpdateOneBlock "<<std::endl;
+
+    if(isUpdateOneBlock)
+    {
+        int curBlockIndex = (int)(data[1]);
+        std::cout<<" UpdateOneBlock +||+  "<<curBlockIndex<<std::endl;
+        if(curBlockIndex < lastBlockIndex)
+        {
+            std::cout<<" Update"<<std::endl;
+            Update(radarData);
+            //radarData.ClearData();
+        }
+
+        if(curBlockIndex >= 0 && curBlockIndex<= 29)
+        {
+            //更新转速
+            radarData.speed = (int)(data[3] << 8) + (int)(data[2]);
+            for(int i = 0; i < DATACOUNT; i++)
+            {
+                int distanceMm = (int)(data[4 + 2*i + 1] << 8) + (int)(data[4 + 2*i]);
+                if(distanceMm == 32768)
+                    distanceMm = -1;
+                radarData.data[curBlockIndex][i] = distanceMm;//赋值
+            }
+        }
+
+        if(curBlockIndex == 29)
+        {
+            std::cout<<" Update"<<std::endl;
+            Update(radarData);
+            //radarData.ClearData();
+        }
+
+        lastBlockIndex = curBlockIndex;
+    }
+}
+
