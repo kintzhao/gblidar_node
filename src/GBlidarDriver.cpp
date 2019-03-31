@@ -241,7 +241,7 @@ void GBlidarRead::Update(const RadarData& data)
     sensor_msgs::LaserScan scan_msg;
 
     scan_msg.header.stamp = ros::Time::now();
-    scan_msg.header.frame_id = "laser";
+    scan_msg.header.frame_id = frameId;
 
     scan_msg.angle_min =  -M_PI;
     scan_msg.angle_max =  M_PI;

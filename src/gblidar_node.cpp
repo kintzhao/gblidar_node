@@ -22,7 +22,7 @@ int main(int argc, char** argv)
     nhPrivate.param<std::string>("frame_id", frameId, "laser_frame");
 
     GBlidarRead gblidarRead;
-
+    gblidarRead.setFrameId(frameId);
     gblidarRead.Connect(serialPort.c_str(), serialBaudrate);
     if(gblidarRead.CheckConnect())
     {

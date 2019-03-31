@@ -33,6 +33,8 @@ public:
 	void DisConnect();
 	bool CheckConnect();
     void ReadData();
+    void setFrameId(const std::string& frame_id){frameId = frame_id;}
+
 private:
 	void CheckLineBeComplete(uint8_t* data, int size, bool* bComplete, bool* bStartLine);
 	void AddOneLineData(uint8_t* data, int size);

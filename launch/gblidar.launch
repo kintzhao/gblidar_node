@@ -1,0 +1,7 @@
+<launch>
+  <node name="gblidarNode"          pkg="gblidar_node"  type="gblidar_node" output="screen">
+  <param name="serial_port"         type="string" value="/dev/ttyUSB0"/>  
+  <param name="serial_baudrate"     type="int"    value="460800"/>
+  <param name="frame_id"            type="string" value="laser"/>
+  </node>
+</launch>
