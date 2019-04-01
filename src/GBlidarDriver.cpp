@@ -168,6 +168,7 @@ void GBlidarRead::AddOneLineData(uint8_t* data, int size)
 			int index = (int)(dataTemp[1]);
 			if(index >= 0 && index<= 29) 
 			{
+                blockUpdateFlag_.push_back(index);
 				//更新转速
 				radarData.speed = (int)(dataTemp[3] << 8) + (int)(dataTemp[2]);
 				for(int i = 0; i < DATACOUNT; i++)
@@ -175,9 +176,9 @@ void GBlidarRead::AddOneLineData(uint8_t* data, int size)
 					int iD = (int)(dataTemp[4 + 2*i + 1] << 8) + (int)(dataTemp[4 + 2*i]);
                     if(iD == 32768)
                         iD = -1;
-					radarData.data[index][i] = iD;//赋值
+                    radarData.data[index][i] = iD;//赋值
 				}
-                
+
                 tempCount = 0;
                 memset(dataTemp, '\0', 54);
 		    }
@@ -187,8 +188,14 @@ void GBlidarRead::AddOneLineData(uint8_t* data, int size)
 		{	
             //下一组数据来了，请在这里处理解析好的一组数据，
             //std::cout << "-----请在这里处理解析好的一组数据"<< std::endl;
-            Update(radarData);
-
+            if(blockUpdateFlag_.size() == 30)
+                Update(radarData);
+//            for(int i =0; i< blockUpdateFlag_.size();i++)
+//            {
+//                std::cout<<" "<< blockUpdateFlag_[i];
+//            }
+//            std::cout<<" ========== "<<std::endl;
+            blockUpdateFlag_.clear();
             //这里清除这一组数据
 			radarData.ClearData();
 		}
@@ -196,6 +203,7 @@ void GBlidarRead::AddOneLineData(uint8_t* data, int size)
 		int index2 = (int)(data[1]);
 		if(index2 >= 0 && index2 <= 29 && size == (DATACOUNT * 2 + 6))//54 = 6 + 24 * 2 
 		{
+            blockUpdateFlag_.push_back(index2);
 			//更新转速
 			radarData.speed = (int)(data[3] << 8) + (int)(data[2]);
 			for(int i = 0; i < DATACOUNT; i++)
@@ -204,7 +212,7 @@ void GBlidarRead::AddOneLineData(uint8_t* data, int size)
                 if(iD == 32768)
                     iD = -1;
 				radarData.data[index2][i] = iD;//赋值
-			}
+            }
 		}
     }
 	else
@@ -244,14 +252,14 @@ void GBlidarRead::Update(const RadarData& data)
     scan_msg.header.stamp = ros::Time::now();
     scan_msg.header.frame_id = frameId;
 
-    scan_msg.angle_min =  -M_PI;
-    scan_msg.angle_max =  M_PI;
+    scan_msg.angle_min =  M_PI;
+    scan_msg.angle_max = -1.0*M_PI;
 
-    scan_msg.angle_increment = 12.0/DATACOUNT*M_PI/180;
+    scan_msg.angle_increment = -12.0/DATACOUNT*M_PI/180;
 
     scan_msg.scan_time = 1.0/(216000/30/DATACOUNT);
     scan_msg.time_increment = 1.0/(216000);
-    scan_msg.range_min = 0.15;
+    scan_msg.range_min = 0.05;
     scan_msg.range_max = 15;//8.0;
 
     scan_msg.intensities.resize(30* DATACOUNT);
@@ -275,7 +283,7 @@ void GBlidarRead::work()
 {
     std::cout << "GBlidarRead::ReadData start.." << std::endl;
     //创建句柄（虽然后面没用到这个句柄，但如果不创建，运行时进程会出错）
-    //ros::Rate loop_rate(20);//睡眠10毫秒
+    ros::Rate loop_rate(20);//睡眠10毫秒
     bool bLastFA = false;
     uint8_t tempData[200];
     int tempPos = 0;
@@ -286,11 +294,12 @@ void GBlidarRead::work()
         int n = sp.available();
         if(n!=0)
         {
-            uint8_t buffer[1024 * 1024];
+            uint8_t buffer[1024 * 10];
             //读出数据
             //std::cout << "GBlidarRead::ReadData 3.." << std::endl;
             n = sp.read(buffer, n);
-            std::cout << "GBlidarRead::ReadData buffer length:" << n<< std::endl;
+            //sp.read(buffer, DATACOUNT * 2 + 6);
+        //    std::cout << "GBlidarRead::ReadData buffer length:" << n<< std::endl;
             for(int i = 0; i < n; i++)
             {
                 if(buffer[i] == 0xFA)
@@ -309,7 +318,7 @@ void GBlidarRead::work()
                 }
             }
         }
-        //loop_rate.sleep();
+        loop_rate.sleep();
         ros::spinOnce();
 
     }
@@ -320,7 +329,7 @@ void GBlidarRead::work()
 void GBlidarRead::work2()
 {
     std::cout << "GBlidarRead::ReadData start.." << std::endl;
-    ros::Rate loop_rate(20);//睡眠10毫秒
+    ros::Rate loop_rate(100);//睡眠10毫秒
     bool bLastFA = false;
     uint8_t tempData[200];
     int oneBlockCount = -1;
@@ -342,8 +351,9 @@ void GBlidarRead::work2()
             //bool isCheckNewBlock = true;
             for(int i = 0; i < n; i++)
             {
-                if(buffer[i] == 0xFA)
+                if(buffer[i] == 0xFA && !isCheckNewBlock)
                 {
+                    std::cout << " FA  "  << std::endl;
                     isCheckNewBlock = true;
                     memset(tempData, 0, DATACOUNT * 2 + 6);
                     oneBlockCount = 0;
@@ -353,15 +363,21 @@ void GBlidarRead::work2()
                 {
                     if(isCheckNewBlock)
                         tempData[oneBlockCount++] = buffer[i];
+                    else
+                        std::cout<<"  !!==  "<<tempData[oneBlockCount]<<std::endl;
                 }
 
                 if(isCheckNewBlock && oneBlockCount == DATACOUNT * 2 + 6 )
                 {
-                    std::cout<<"oneBlockCount calc: "<<oneBlockCount<<std::endl;
+                    //std::cout<<"oneBlockCount calc: "<<oneBlockCount<<std::endl;
                     isCheckNewBlock = false;
                     processOneBlock(tempData, oneBlockCount);
                     oneBlockCount = -1;
                     memset(tempData, 0, DATACOUNT * 2 + 6);
+                }
+                else if(!isCheckNewBlock)
+                {
+                    std::cout<<" ~~ "<<oneBlockCount<<" | "<<isCheckNewBlock<<"  "<<tempData[oneBlockCount]<<std::endl;
                 }
             }
         }
@@ -406,28 +422,40 @@ void GBlidarRead::processOneBlock(uint8_t* data, int size)
         {
             isUpdateOneBlock = false;
         }
-        std::cout<<"count OK! isUpdateOneBlock checkSum: "<<isUpdateOneBlock<<std::endl;
+        //std::cout<<"count OK! isUpdateOneBlock checkSum: "<<isUpdateOneBlock<<std::endl;
     }
     else
     {
         isUpdateOneBlock = false;
     }
-    std::cout<<"run UpdateOneBlock "<<std::endl;
+    //std::cout<<"run UpdateOneBlock "<<std::endl;
 
     if(isUpdateOneBlock)
     {
         int curBlockIndex = (int)(data[1]);
-        std::cout<<" UpdateOneBlock +||+  "<<curBlockIndex<<std::endl;
+        std::cout<<" UpdateOneBlock ::  "<<curBlockIndex<<std::endl;
         if(curBlockIndex < lastBlockIndex)
         {
             std::cout<<" Update"<<std::endl;
-            Update(radarData);
-            //radarData.ClearData();
+            if(blockUpdateFlag_.size() == 30)
+            {
+                Update(radarData);
+                std::cout<<" !!!!!blockUpdateFlag_ 30!!!!!!   "<<std::endl;
+            }
+
+            for(int i =0; i< blockUpdateFlag_.size();i++)
+            {
+                std::cout<<" "<< blockUpdateFlag_[i];
+            }
+            std::cout<<" ========== "<<std::endl;
+            radarData.ClearData();
+            blockUpdateFlag_.clear();
         }
 
         if(curBlockIndex >= 0 && curBlockIndex<= 29)
         {
             //更新转速
+            blockUpdateFlag_.push_back(curBlockIndex);
             radarData.speed = (int)(data[3] << 8) + (int)(data[2]);
             for(int i = 0; i < DATACOUNT; i++)
             {
@@ -441,8 +469,20 @@ void GBlidarRead::processOneBlock(uint8_t* data, int size)
         if(curBlockIndex == 29)
         {
             std::cout<<" Update"<<std::endl;
-            Update(radarData);
-            //radarData.ClearData();
+            if(blockUpdateFlag_.size() == 30)
+            {
+                Update(radarData);
+                std::cout<<"!!!!!blockUpdateFlag_ 30!!!!!!   "<<std::endl;
+            }
+
+            for(int i =0; i< blockUpdateFlag_.size();i++)
+            {
+                std::cout<<" "<< blockUpdateFlag_[i];
+            }
+            std::cout<<" ========== "<<std::endl;
+            radarData.ClearData();
+            blockUpdateFlag_.clear();
+
         }
 
         lastBlockIndex = curBlockIndex;

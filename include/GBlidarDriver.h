@@ -58,7 +58,7 @@ public:
 
     //GBlidarRead gblidarRead;
     //实现父类的虚方法
-
+    std::vector<int> blockUpdateFlag_;
     void Update(const RadarData&  data);
     void init(){}
     void work();
