@@ -63,6 +63,9 @@ public:
     void init(){}
     void work();
     void work2();
+
+    ros::Time start_scan_time;
+    ros::Time end_scan_time;
 };
 
 

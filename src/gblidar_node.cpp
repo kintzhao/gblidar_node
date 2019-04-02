@@ -26,12 +26,12 @@ int main(int argc, char** argv)
     gblidarRead.Connect(serialPort.c_str(), serialBaudrate);
     if(gblidarRead.CheckConnect())
     {
-        std::cout << "CheckConnect succuss.." << std::endl;
-        gblidarRead.work();
+        //std::cout << "CheckConnect succuss.." << std::endl;
+        gblidarRead.work2();
     }
     else
     {
-        std::cout << "CheckConnect error.." << std::endl;
+        //std::cout << "CheckConnect error.." << std::endl;
         return -1;
     }
 

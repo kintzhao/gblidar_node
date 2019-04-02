@@ -1,6 +1,8 @@
 
 #include "GBlidarDriver.h"
 
+#define DEG2RAD(x) ((x)*M_PI/180.)
+
 GBlidarRead::GBlidarRead():nhPrivate_("~")
 {
     //ROS_INFO_STREAM("GBlidarRead create.--------.");
@@ -185,11 +187,16 @@ void GBlidarRead::AddOneLineData(uint8_t* data, int size)
         }
 		
 		if(bStart)
-		{	
+        {
+            start_scan_time = ros::Time::now();
             //下一组数据来了，请在这里处理解析好的一组数据，
             //std::cout << "-----请在这里处理解析好的一组数据"<< std::endl;
             if(blockUpdateFlag_.size() == 30)
+            {
+                end_scan_time = ros::Time::now();
                 Update(radarData);
+            }
+
 //            for(int i =0; i< blockUpdateFlag_.size();i++)
 //            {
 //                std::cout<<" "<< blockUpdateFlag_[i];
@@ -243,8 +250,34 @@ void GBlidarRead::Hex2Str( const char *sSrc,  char *sDest, int nSrcLen )
     return ;
 }
 
-void GBlidarRead::Update(const RadarData& data)
+//for debug
+void GBlidarRead::Update2(const RadarData& data)
 {
+    std::vector<float>  distances;
+    std::vector<float>  angles;
+    for(int i = 0;i<30;i++)
+    {
+        float angle = i*12.0;
+        for(int j=0 ;j< DATACOUNT;j++)
+        {
+            distances.push_back(data.data[i][j]*0.001);
+            angles.push_back(angle+0.3333*j);
+            //degree = degree + 0.333;
+        }
+    }
+    for(int i=0; i< distances.size();i++)
+    {
+        std::cout<<" "<<distances[i];
+    }
+    std::cout<<"   " <<std::endl;
+    std::cout<<" ===================   " <<std::endl;
+    for(int i=0; i< angles.size();i++)
+    {
+        std::cout<<" "<<angles[i];
+    }
+    std::cout<<"   " <<std::endl;
+
+
     static int i =0;
     std::cout << "data update: " << i++<< std::endl;
     sensor_msgs::LaserScan scan_msg;
@@ -252,10 +285,47 @@ void GBlidarRead::Update(const RadarData& data)
     scan_msg.header.stamp = ros::Time::now();
     scan_msg.header.frame_id = frameId;
 
-    scan_msg.angle_min =  M_PI;
-    scan_msg.angle_max = -1.0*M_PI;
+    scan_msg.angle_min =  0;
+    scan_msg.angle_max =  M_PI*2;//M_PI - DEG2RAD(359);
 
-    scan_msg.angle_increment = -12.0/DATACOUNT*M_PI/180;
+    scan_msg.angle_increment = DEG2RAD(0.3333);//(scan_msg.angle_max - scan_msg.angle_min)/(30*DATACOUNT) ;//-12.0/DATACOUNT*M_PI/180;
+
+    scan_msg.scan_time = (end_scan_time - start_scan_time).toSec() /(30/DATACOUNT);//  2.0/(216000/30/DATACOUNT);
+    scan_msg.time_increment = 1.0/(216000);
+    scan_msg.range_min = 0.05;
+    scan_msg.range_max = 15;//8.0;
+
+    scan_msg.intensities.resize(30* DATACOUNT,0.0);
+    scan_msg.ranges.resize(30* DATACOUNT,0.0);
+
+    //float degree = 0;
+    for(int i = 0;i<30;i++){
+        //std::cout << "-degree:" << degree << ",distance(m):"<< data.data[i][0]*0.001 << std::endl;
+        //std::cout << "   "<< data.data[i][0]*0.001;// << std::endl;
+        for(int j=0 ;j< DATACOUNT;j++){
+            scan_msg.ranges[i*DATACOUNT+j] = data.data[i][j]*0.001;//m
+            scan_msg.intensities[i*DATACOUNT+j] = 0.0;
+            //degree = degree + 0.333;
+            std::cout << "   "<< data.data[i][0]*0.001;// << std::endl;
+        }
+    }
+    std::cout << "   "<< std::endl;// << std::endl;
+    lidarPub_.publish(scan_msg);
+}
+
+void GBlidarRead::Update(const RadarData& data)
+{
+    //static int i =0;
+    //std::cout << "data update: " << i++<< std::endl;
+    sensor_msgs::LaserScan scan_msg;
+
+    scan_msg.header.stamp = ros::Time::now();
+    scan_msg.header.frame_id = frameId;
+
+    scan_msg.angle_min =  -M_PI;
+    scan_msg.angle_max =  M_PI;//M_PI - DEG2RAD(359);
+
+    scan_msg.angle_increment = -DEG2RAD(0.3333);//(scan_msg.angle_max - scan_msg.angle_min)/(30*DATACOUNT) ;//-12.0/DATACOUNT*M_PI/180;
 
     scan_msg.scan_time = 1.0/(216000/30/DATACOUNT);
     scan_msg.time_increment = 1.0/(216000);
@@ -269,15 +339,14 @@ void GBlidarRead::Update(const RadarData& data)
     for(int i = 0;i<30;i++){
         //std::cout << "-degree:" << degree << ",distance(m):"<< data.data[i][0]*0.001 << std::endl;
         for(int j=0 ;j< DATACOUNT;j++){
-            scan_msg.ranges[i*30+j] = data.data[i][j]*0.001;//m
-            scan_msg.intensities[i*30+j] = 0.0;
+            scan_msg.ranges[i*DATACOUNT+j] = data.data[i][j]*0.001;//m
+            scan_msg.intensities[i*DATACOUNT+j] = 0.0;
             //degree = degree + 0.333;
         }
     }
 
     lidarPub_.publish(scan_msg);
 }
-
 
 void GBlidarRead::work()
 {
@@ -328,7 +397,7 @@ void GBlidarRead::work()
 
 void GBlidarRead::work2()
 {
-    std::cout << "GBlidarRead::ReadData start.." << std::endl;
+    //std::cout << "GBlidarRead::ReadData start.." << std::endl;
     ros::Rate loop_rate(100);//睡眠10毫秒
     bool bLastFA = false;
     uint8_t tempData[200];
@@ -339,21 +408,21 @@ void GBlidarRead::work2()
         //获取缓冲区内的字节数
         //std::cout << "GBlidarRead::ReadData 2..|| "<<sp.available() << std::endl;
         int n = sp.available();
-        std::cout << "GBlidarRead::ReadData 2..|| "<< n << std::endl;
+        //std::cout << "GBlidarRead::ReadData 2..|| "<< n << std::endl;
         if(n!=0)
         {
             uint8_t buffer[1024 * 1024];
             //读出数据
             //std::cout << "GBlidarRead::ReadData 3.." << std::endl;
             n = sp.read(buffer, n);
-            std::cout << "GBlidarRead::ReadData buffer length:" << n<< std::endl;
+            //std::cout << "GBlidarRead::ReadData buffer length:" << n<< std::endl;
             bool isUpdateOneBlock = false;
             //bool isCheckNewBlock = true;
             for(int i = 0; i < n; i++)
             {
                 if(buffer[i] == 0xFA && !isCheckNewBlock)
                 {
-                    std::cout << " FA  "  << std::endl;
+                    //std::cout << " FA  "  << std::endl;
                     isCheckNewBlock = true;
                     memset(tempData, 0, DATACOUNT * 2 + 6);
                     oneBlockCount = 0;
@@ -364,7 +433,7 @@ void GBlidarRead::work2()
                     if(isCheckNewBlock)
                         tempData[oneBlockCount++] = buffer[i];
                     else
-                        std::cout<<"  !!==  "<<tempData[oneBlockCount]<<std::endl;
+                        ;//std::cout<<"  !!==  "<<tempData[oneBlockCount]<<std::endl;
                 }
 
                 if(isCheckNewBlock && oneBlockCount == DATACOUNT * 2 + 6 )
@@ -377,7 +446,7 @@ void GBlidarRead::work2()
                 }
                 else if(!isCheckNewBlock)
                 {
-                    std::cout<<" ~~ "<<oneBlockCount<<" | "<<isCheckNewBlock<<"  "<<tempData[oneBlockCount]<<std::endl;
+                    ;//std::cout<<" ~~ "<<oneBlockCount<<" | "<<isCheckNewBlock<<"  "<<tempData[oneBlockCount]<<std::endl;
                 }
             }
         }
@@ -433,21 +502,21 @@ void GBlidarRead::processOneBlock(uint8_t* data, int size)
     if(isUpdateOneBlock)
     {
         int curBlockIndex = (int)(data[1]);
-        std::cout<<" UpdateOneBlock ::  "<<curBlockIndex<<std::endl;
+        //std::cout<<" UpdateOneBlock ::  "<<curBlockIndex<<std::endl;
         if(curBlockIndex < lastBlockIndex)
         {
-            std::cout<<" Update"<<std::endl;
+            //std::cout<<" Update"<<std::endl;
             if(blockUpdateFlag_.size() == 30)
             {
                 Update(radarData);
-                std::cout<<" !!!!!blockUpdateFlag_ 30!!!!!!   "<<std::endl;
+                //std::cout<<" !!!!!blockUpdateFlag_ 30!!!!!!   "<<std::endl;
             }
 
             for(int i =0; i< blockUpdateFlag_.size();i++)
             {
-                std::cout<<" "<< blockUpdateFlag_[i];
+                //std::cout<<" "<< blockUpdateFlag_[i];
             }
-            std::cout<<" ========== "<<std::endl;
+            //std::cout<<" ========== "<<std::endl;
             radarData.ClearData();
             blockUpdateFlag_.clear();
         }
@@ -468,18 +537,18 @@ void GBlidarRead::processOneBlock(uint8_t* data, int size)
 
         if(curBlockIndex == 29)
         {
-            std::cout<<" Update"<<std::endl;
+            //std::cout<<" Update"<<std::endl;
             if(blockUpdateFlag_.size() == 30)
             {
                 Update(radarData);
-                std::cout<<"!!!!!blockUpdateFlag_ 30!!!!!!   "<<std::endl;
+                //std::cout<<"!!!!!blockUpdateFlag_ 30!!!!!!   "<<std::endl;
             }
 
             for(int i =0; i< blockUpdateFlag_.size();i++)
             {
-                std::cout<<" "<< blockUpdateFlag_[i];
+                ;//std::cout<<" "<< blockUpdateFlag_[i];
             }
-            std::cout<<" ========== "<<std::endl;
+            //std::cout<<" ========== "<<std::endl;
             radarData.ClearData();
             blockUpdateFlag_.clear();
 
