@@ -10,10 +10,13 @@ find_package(catkin REQUIRED COMPONENTS
 
 catkin_package()
 
-include_directories(include ${catkin_INCLUDE_DIRS})
+include_directories(include SDK  ${catkin_INCLUDE_DIRS})
 link_directories(${catkin_LIB_DIRS} )
 
 add_executable(gblidar_node src/gblidar_node.cpp  src/GBlidarDriver.cpp)
 target_link_libraries(gblidar_node
     ${catkin_LIBRARIES})
 
+add_executable(gblidarNode src/gblidarNode.cpp  SDK/GblidarDriver.cpp)
+target_link_libraries(gblidarNode
+    ${catkin_LIBRARIES})
